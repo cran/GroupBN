@@ -1,0 +1,15 @@
+c84bfe79c828c17df17f3916d572bbac *DESCRIPTION
+7f29da32bcad2f282d23ad4924494815 *NAMESPACE
+b0853b451e9d8caac789dde7999e2fe3 *R/Refinement_final.R
+890bc3ede3e9b86ae3f9e58dad3ed775 *R/adaptive_refinement_help.R
+63288fbe4ab2558d2e8a543c8a82b40c *data/wine.groupbn.refined.rda
+9115e80fd5e3e4010055686638478bea *man/cross.en.Rd
+c422633a1c7aeae482794b553fd8f905 *man/discretize.dens.Rd
+5ce0eadeab6c314668b43f56094fb781 *man/groupbn.Rd
+a319b742f1515903c6ef8b843256a7ee *man/groupbn.output.table.Rd
+55cc83017b0fa4948a0b13825da3d5a1 *man/groupbn.vis.html.plot.Rd
+83f8268ee0e9b0664804f24788e2efae *man/groupbn_refinement.Rd
+0ad47ff8ea184452997e7c3d004c5786 *man/is.groupbn.Rd
+1c4dcb8b4578a0293a06481e3f61cb19 *man/plot.groupbn.Rd
+45b39db05f6c3489034de7f33391f080 *man/print.groupbn.Rd
+88703c40ac5dd0a5049f2765d7cc14f4 *man/wine.groupbn.refined.Rd

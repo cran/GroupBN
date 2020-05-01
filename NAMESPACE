@@ -1,0 +1,14 @@
+export(groupbn, groupbn_refinement, cross.en, discretize.dens, groupbn.output.table, plot.groupbn, groupbn.vis.html.plot, is.groupbn, print.groupbn)
+import("ClustOfVar", "PCAmixdata", "visNetwork", "zoo")
+import("bnlearn", except=c("discretize"))
+importFrom("magrittr", "%>%")
+importFrom("plyr", "match_df")
+importFrom("stringr", "str_split", "fixed")
+importFrom("plyr", "match_df")
+importFrom("arules", "discretize")
+importFrom("graphics", "plot")
+importFrom("stats", "complete.cases", "predict", "cor")
+
+S3method(print, groupbn)
+S3method(plot, groupbn)
+

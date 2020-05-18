@@ -71,6 +71,7 @@ disc.scores<-function(res, seed=NULL){
 #graph: Boolean, if TRUE plots are produced
 #rename.level: Boolean, if TRUE levels are renamed to integers (1,2,3,...)
 #cluster: Boolean, if TRUE it is checked if a cluster is already a discrete variable
+
 discretize.dens<-function(data, graph=F, title="Density-approxmative Discretization", rename.level=F, return.all=T, cluster=F, seed=NULL){
   if (!is.null(seed)) {set.seed(seed)}
   if (is.factor(data)){
@@ -96,7 +97,15 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
     #all levels exist more than once in the data (then keep all levels)
     if(all(table(as.factor(data))>1)){
       d<-as.factor(data)
-      lev<-attr(d, "discretized:breaks")
+      #set cutpoints between levels
+      lev<-rep(0, length(levels(d))-1)
+      for(l in 1:length(levels(d))){
+        lev[l]<-as.numeric(levels(d))[l]+(as.numeric(levels(d))[l+1]-as.numeric(levels(d))[l])/2
+      }
+      #set outer boundaries to Inf
+      lev[1]<--Inf
+      lev[length(lev)]<-Inf
+      d<-arules::discretize(data, method="fixed", breaks=lev)
       if(rename.level){
         levels(d)<-1:m
       }
@@ -124,12 +133,14 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
       } else {
         invisible(d)
       }
-    }
-    #otherwise use cluster-based discretization policy
-    else{
+    } else{
       cent<-as.numeric(names(table(as.factor(data))[table(as.factor(data))>1]))
       d<-arules::discretize(data, method="cluster", centers=cent)
       lev<-attr(d, "discretized:breaks")
+      #set outer boundaries to Inf
+      lev[1]<--Inf
+      lev[length(lev)]<-Inf
+      d<-arules::discretize(data, method="fixed", breaks=lev)
       if(rename.level){
         levels(d)<-1:length(cent)
       }
@@ -141,6 +152,9 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
         cent<-as.numeric(names(sort(table(as.factor(data))[table(as.factor(data))>1], decreasing=T)[1:(max-xy)]))
         d<-arules::discretize(data, method="cluster", centers=cent)
         lev<-attr(d, "discretized:breaks")
+        lev[1]<--Inf
+        lev[length(lev)]<-Inf
+        d<-arules::discretize(data, method="fixed", breaks=lev)
         if(rename.level){
           levels(d)<-1:length(cent)
         }
@@ -188,7 +202,12 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
       else{
         d<-arules::discretize(data, method="cluster", centers=max[1,])
       }
+
       lev<-attr(d, "discretized:breaks")
+      #set outer boundaries to Inf
+      lev[1]<--Inf
+      lev[length(lev)]<-Inf
+      d<-arules::discretize(data, method="fixed", breaks=lev)
       if(rename.level){
         levels(d)<-1:int
       }
@@ -203,6 +222,10 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
         br<-stats::quantile(data, na.rm=T)
         d<-arules::discretize(data, method="fixed", breaks=br)
         lev<-attr(d, "discretized:breaks")
+        #set outer boundaries to Inf
+        lev[1]<--Inf
+        lev[length(lev)]<-Inf
+        d<-arules::discretize(data, method="fixed", breaks=lev)
         if(rename.level){
           levels(d)<-1:int
         }
@@ -221,14 +244,16 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
         # lev<-attr(d, "discretized:breaks")
         #  levels(d)<-1:int
         #}
-      }
-      else {
+      } else {
         x=0.05
         lev<-unique(stats::quantile(data, prob=c(0,x,1-x,1), na.rm = T))
         while(length(lev)<=2&x>=0){
           x=x-0.01
           lev<-unique(stats::quantile(data, prob=c(0,x,1-x,1), na.rm = T))
         }
+        #set outer boundaries to Inf
+        lev[1]<--Inf
+        lev[length(lev)]<-Inf
         d<-arules::discretize(data, method="fixed", breaks=lev)
         if(rename.level){
           levels(d)<-1:length(unique(stats::quantile(data, na.rm=TRUE, prob=c(0,0.05,0.95,1))))
@@ -266,6 +291,7 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
     }
   }
 }
+###############
 
 #get all variables belonging to specific cluster from merge matrix
 get.cluster<-function(cl, ME){
@@ -439,9 +465,8 @@ group.data.preproc<-function(res, seed=NULL){
     for (sep in 1:length(separate)){
       variable<-separate[sep]
       if(!(variable%in%colnames(data))){
-        message("Could not find variable")
+        stop("Could not find variable")
       } else {
-
         res$disc.param<-lappend(res$disc.param, NULL)
         res$pca.param<-lappend(res$pca.param, NULL)
 
@@ -520,20 +545,20 @@ comb.output.scores<-function(x,...,n=13){
 network<-function(data, start=NULL, R=200, restart=5, perturb=max(1,round(0.1*dim(data)[2])), blacklist=NULL, debug=F, seed=NULL){
   if(debug){message("learning arcs")}
   if(!is.null(seed)){set.seed(seed)}
-  arcs<-suppressWarnings(bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist)))
+  #arcs<-suppressWarnings(bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist)))
+  arcs<-bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist))
   net<-bnlearn::averaged.network(arcs)
   res <- try(bnlearn::cextend(net), silent = T)
   #try if extension is possible
   while(inherits(res, "try-error")){
     message("try-error")
-    arcs<-bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb))
+    arcs<-bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb,  blacklist=blacklist))
     net<-bnlearn::averaged.network(arcs)
     res <- try(bnlearn::cextend(net))
   }
   return(list(net=net, arc.confid<-arcs))
 }
 
-#Create an output table with clusters and included variables with similarity scores
 #res: groupbn object
 #save.name: filename for saving
 #pdf: Boolean, should the file be saved as pdf
@@ -601,10 +626,12 @@ PCAmix.groupbn<-function(X.quanti, X.quali, names, graph=FALSE, seed=NULL){
   quanti.names<-names[which(names%in%colnames(X.quanti))]
   if (length(quanti.names)==1&length(quali.names)>0){
     #1 Quanti, many Quali: Error: discretize
-    quan2qual<-discretize.dens(X.quanti[,quanti.names], seed=seed)$discretized
+    tempd<-discretize.dens(X.quanti[,quanti.names], seed=seed)
+    quan2qual<-tempd$discretized
     quan2qual<-as.data.frame(quan2qual)
     colnames(quan2qual)<-quanti.names
     pc<-PCAmixdata::PCAmix(X.quali=cbind(X.quali[,quali.names, drop=F], quan2qual), rename.level = T, graph=graph, ndim=2)
+    attr(pc, "breaks")<-tempd$levels
   } else if (length(quanti.names)>0&length(quali.names)==0){
     #Only Quanti
     pc<-PCAmixdata::PCAmix(X.quanti=X.quanti[,quanti.names, drop=F], graph=graph, rename.level=TRUE)
@@ -762,19 +789,188 @@ validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method=
   if(debug){message(x)}
   attr(result, "scores") <- x
   attr(result, "auc")<-roc.cu$auc
-  attr(result, "error.th")<-result.error+(result-result.error)/2
+  attr(result, "error.th")<-(result.error+(result-result.error)/2)/sum(!is.na(p))
   attr(result, "confusion")<-table(obs, predictions)
-  attr(result, "pscores")<-p
-  if(debug){print(table(predictions,obs))}
+  attr(result, "pscores")<-1-p
+  if(debug){print(table(pred=predictions,obs=obs))}
+  result<-result/sum(!is.na(p))
   return(result)
   }
 }
+
+#NEU:
+predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data=F, ...){
+  if(length(setdiff(colnames(X.quali),colnames(object$X.quali)))>0 | length(setdiff(colnames(object$X.quali),colnames(X.quali)))){
+    stop("The variables in X.quali must be the same in the model and in the testdata.")
+  }
+  if(length(setdiff(colnames(X.quanti),colnames(object$X.quanti)))>0 | length(setdiff(colnames(object$X.quanti),colnames(X.quanti)))){
+    stop("The variables in X.quanti must be the same in the model and in the testdata.")
+  }
+  #initialize a data.frame
+  df <- data.frame(matrix(ncol = max(object$grouping), nrow = nrow(X.quanti)))
+  colnames(df)<-paste("cl", levels(as.factor(object$grouping)), sep="")
+  #initialize a score vector
+  scores<-object$grouping
+
+  #Predict Principal Components
+  for (clus in 1:max(object$grouping)){
+    #split quali and quanti variables of a cluster
+    quanti.names<-names(which(object$grouping==clus))[which(names(which(object$grouping==clus))%in%colnames(X.quanti))]
+    quali.names<-names(which(object$grouping==clus))[which(names(which(object$grouping==clus))%in%colnames(X.quali))]
+
+    nr.vars<-length(quanti.names)+length(quali.names)
+
+    #test for all identical factor levels
+    uni<-apply(X.quali[,quali.names, drop=F],2, FUN=function(x){length(stats::na.omit(unique(x)))})
+    if (any(uni==1)){
+      #add hypothetical sample with missing levels
+      nr.added<-length(which(uni==1))
+      lvl.miss<-rep(0,length(which(uni==1)))
+      for (unix in 1:nr.added){
+        lvl.miss[unix]<-length(names(which(table(X.quali[,names(which(uni==1))[unix]])==0)))
+      }
+      X.quanti1<-X.quanti
+      X.quali1<-X.quali
+      for (unix in 1:nr.added){
+        lvl.nr<-names(which(table(X.quali[,names(which(uni==1))[unix]])==0))
+        for(lvl in 1:length(lvl.nr)){
+          X.quanti1<-rbind(X.quanti1, X.quanti[1,])
+          X.quali1<-rbind(X.quali1, X.quali[1,])
+          X.quali1[dim(X.quali1)[1],names(which(uni==1))[unix]]<-lvl.nr[lvl]
+          if(lvl>1){
+            nr.added<-nr.added+1
+          }
+        }
+      }
+      #predict and save without hypothetical sample
+      if (length(quanti.names)==1&length(quali.names)>1){
+        quan2qual<-arules::discretize(X.quanti1[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
+        quan2qual<-as.data.frame(quan2qual)
+        colnames(quan2qual)<-quanti.names
+        df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali1[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+        message(quanti.names, "removed")
+      } else if (length(quanti.names)==0&length(quali.names)==1){
+        df[,clus]<-factor(X.quali1[,quali.names])[1:(length(X.quali1[,quali.names])-1)]
+        colnames(df)[clus]<-quali.names
+      } else if (length(quanti.names)>0&length(quali.names)==1){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali1[,quali.names, drop=F])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+      } else if(length(quanti.names)==1&length(quali.names)==0){
+        df[,clus]<-X.quanti[,quanti.names, drop=F][1:(length(X.quali1[,quali.names])-1)]
+      } else if (length(quanti.names)>0&length(quali.names)>0){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+      } else if(length(quanti.names)>0){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+      } else {
+        df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+      }
+    }else{
+      if (length(quanti.names)==1&length(quali.names)>1){
+        quan2qual<-arules::discretize(X.quanti[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
+        quan2qual<-as.data.frame(quan2qual)
+        colnames(quan2qual)<-quanti.names
+        df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[,1]
+      } else if (length(quanti.names)==0&length(quali.names)==1){
+        df[,clus]<-factor(X.quali[,quali.names])
+        colnames(df)[clus]<-quali.names
+      } else if (length(quanti.names)==1&length(quali.names)==0){
+        df[,clus]<-X.quanti[,quanti.names]
+        colnames(df)[clus]<-quanti.names
+      } else if (length(quanti.names)>0&length(quali.names)==1){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names, drop=F])[,1]
+      } else if(length(quanti.names)==1&length(quali.names)==0){
+        df[,clus]<-X.quanti[,quanti.names, drop=F]
+      } else if (length(quanti.names)>0&length(quali.names)>0){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names])[,1]
+      } else if(length(quanti.names)>0){
+        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names])[,1]
+      } else {
+        df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali[,quali.names])[,1]
+      }
+    }
+  }
+  #Discretize with given intervals
+  for (clus in 1:max(object$grouping)){
+    if(all(!is.null(object$disc.param[[clus]]))){
+      d<-arules::discretize(df[,clus], method="fixed", breaks=object$disc.param[[clus]])
+      if(rename.level){
+        levels(d)<-1:(length(object$disc.param[[clus]][[2]])-1)
+      }
+      df[,clus]<-d
+    }
+  }
+
+  data<-cbind(X.quanti, X.quali)
+  obs<-data[[object$target]]
+  if(!is.factor(obs)){
+    #continuous target
+    temp<-sapply(1:dim(data)[1], function(j){
+      if(sum(is.na(df[j, -which(colnames(df)==object$target)]))==0){
+        prob<-replicate(10, predict(object=object$fit, node=object$target, data=df[j,], method = "bayes-lw"))
+        c(mean(prob))
+      }
+      else{
+        c(NA)
+      }
+    })
+    temp<-as.data.frame(temp)
+    temp$"target"<-obs
+    colnames(temp)<-c("pred","target")
+    if(return.data){
+      return(list(pred=temp, data=df))
+    } else {
+    return(temp)
+    }
+    #stop('implemented only for a categorical target variable with 2-4 levels. Haha')
+  } else {
+    obs<-factor(obs, levels=levels(object$group.data[[object$target]]))
+    if(nlevels(obs)<2|nlevels(obs)>4){
+      stop('implemented only for a categorical target variable with 2-4 levels')
+    } else if(nlevels(obs)>2){
+      k<-nlevels(obs)
+      levels(obs)<-0:(k-1)
+      p<-matrix(0, dim(data)[1], k)
+      for (j in 1:dim(data)[1]){
+        if(sum(is.na(df[j, -which(colnames(df)==object$target)]))==0){
+          p[j,]<-attr( predict(object=object$fit, node=object$target, data=df, method = "bayes-lw", prob = TRUE), "prob")
+        }
+        else{
+          p[j,]<-rep(NA,k)
+        }
+      }
+      return(p)
+   } else {
+      #discrete target
+      levels(obs)<-c(0,1)
+      data<-cbind(X.quanti, X.quali)
+      temp<-sapply(1:dim(data)[1], function(j){
+        if(sum(is.na(df[j, -which(colnames(df)==object$target)]))==0){
+          prob<-replicate(10, attr(predict(object=object$fit, node=object$target, data=df[j, ,drop=FALSE], method = "bayes-lw", prob = TRUE), "prob")[2,])
+          c(mean(prob))
+        }
+        else{
+          c(NA)
+        }
+      })
+      temp<-as.data.frame(temp)
+      temp$"target"<-obs
+      colnames(temp)<-c("pred", "target")
+      if(return.data){
+        return(list(pred=temp, data=df))
+      } else {
+        return(temp)
+      }
+    }
+  }
+}
+
+
+
 
 #Create an interactive html network object with visNet (displaying similarity scores and number of variables in a score)
 #res: groupbn object
 #df: data frame from groupbn.output.table
 #save.name: Name for file
-groupbn.vis.html.plot<-function(res, df=NULL, save.file=TRUE, save.name=NULL, hierarchical=FALSE, nodecolor.all="#E0F3F8", nodecolor.special="black", main=NULL){
+groupbn.vis.html.plot<-function(res, df=NULL, save.file=TRUE, save.name=NULL, hierarchical=FALSE, nodecolor.all="#E0F3F8", nodecolor.special="cornflowerblue", main=NULL){
   if (is.null(df)){
     df<-groupbn.output.table(res)
   }
@@ -818,7 +1014,7 @@ groupbn.vis.html.plot<-function(res, df=NULL, save.file=TRUE, save.name=NULL, hi
   nodecolors[which(bnlearn::nodes(net)%in%c(res$target, res$separate))]<-nodecolor.special
   #node settings
   nodes <- data.frame(id = bnlearn::nodes(net),
-                      shape = c(rep("dot", length(nodes(net)))),#shape of nodes
+                      shape = c(rep("ellipse", length(nodes(net)))),#shape of nodes
                       title = as.character(title),                #node title
                       color = nodecolors,                         #colors
                       label = as.character(names_P2),             #node labels
@@ -843,9 +1039,11 @@ groupbn.vis.html.plot<-function(res, df=NULL, save.file=TRUE, save.name=NULL, hi
       visNetwork::visInteraction(navigationButtons = TRUE)
 
   } else {
-    graph<-visNetwork::visNetwork(nodes, edges, width = "100%", height="1000px", main = main,
-                      footer=paste("Group Bayesian Network.\n The thickness of an edge represents its confidence. Clusters are named by its most central variable. The number is brackets denotes the number of variables in the cluster.", sep="")) %>%
-      visNetwork::visIgraphLayout(type = "square")%>%
+    graph<-visNetwork::visNetwork(nodes, edges, width = "100%", height="700px", main = main,
+                      footer=paste("Group Bayesian Network.\n The thickness of an edge represents its confidence. Clusters are named by its most central variable. The number in brackets denotes the number of variables in the cluster.", sep="")) %>%
+      #visNetwork::visIgraphLayout(type = "square")%>%
+      visPhysics(solver = "forceAtlas2Based",
+                 forceAtlas2Based = list(gravitationalConstant = -100))%>%
       visNetwork::visOptions(highlightNearest = list(enabled = T, hover = T),nodesIdSelection = T)%>%
       visNetwork::visInteraction(navigationButtons = TRUE)
   }
@@ -875,6 +1073,8 @@ print.groupbn<-function(x,...){
     stop("use only with \"groupbn\" objects")
     gnr <- dim(x$group.data)[2]
     separate<-x$separate
+    gsz<- mean(summary(as.factor(x$grouping)))
+    nbrsz<- mean(sapply(x$bn$nodes, function(y){length(y[[2]])}))
     cat("group Bayesian network (class 'groupbn') \n\n")
     cat("name of target variable: ", x$target, "\n",sep = "")
     if(!is.null(separate)){
@@ -883,7 +1083,10 @@ print.groupbn<-function(x,...){
     if (is.numeric(gnr)){
       cat("number of groups: ", gnr,"\n", sep = " ")
     }
-    cat("achieved scoring: ", attr(x$score, "scores"), "; BIC (netw.): ", round(stats::BIC(x$fit, stats::na.omit(x$group.data)),2), "\n",sep = "")
+    if(is.numeric(gsz)&is.numeric(nbrsz)){
+      cat("average group size: ", round(gsz,2), " \naverage neighbourhood size: ", round(nbrsz,2), "\n")
+    }
+    cat("achieved scoring: \n", attr(x$score, "scores"), "; BIC (netw.): ", round(stats::BIC(x$fit, stats::na.omit(x$group.data)),2), "\n",sep = "")
     cat("\n")
   res <- matrix("", 13, 2)
   colnames(res) <- c("name", "description")
@@ -901,7 +1104,21 @@ print.groupbn<-function(x,...){
   res[12, ] <- c("$disc.param", "discretization intervals of each group")
   res[13, ] <- c("$score", "cross entropy and additional scoring information")
   row.names(res) <- rep("", 13)
-  print(res,...)
+  print(res)
+}
+
+groupbn.build.blacklist<-function(data, separate){
+  blacklist<-as.data.frame(matrix(0, (dim(data)[2])*length(separate), 2))
+  colnames(blacklist)=c("From", "To")
+  sep<-c()
+  for(i in 1:length(separate)){
+    sep<-c(sep, rep(separate[i],dim(data)[2]))
+  }
+  blacklist[,2]<-sep
+  blacklist[,1]<-rep(colnames(data),length(separate))
+
+  blacklist<-blacklist[-which(blacklist[,1]==blacklist[,2]),]
+  return(blacklist)
 }
 
 

@@ -4,7 +4,7 @@
 #k: number of clusters (where to cut the dendrogram)
 #target, separate
 #X.quanti, X.quali: data
-groupbn<-function(hierarchy, k, target, separate=NULL, X.quanti, X.quali, debug=FALSE, R=100, seed=NULL){
+groupbn<-function(hierarchy, k, target, separate=NULL, separate.as.roots=FALSE, X.quanti, X.quali, debug=FALSE, R=100, seed=NULL){
   start_time <- Sys.time()
 
   if(dim(X.quanti)[1]!=dim(X.quali)[1]){
@@ -28,6 +28,11 @@ groupbn<-function(hierarchy, k, target, separate=NULL, X.quanti, X.quali, debug=
               score=NULL)
   class(res) <- "groupbn"
 
+  if(!is.null(separate)){
+  attributes(res$separate)$"separate.as.roots"<-separate.as.roots
+  }else{
+    separate.as.roots<-FALSE
+  }
   if (!(target%in%colnames(X.quanti)|target%in%colnames(X.quali))){
     stop("Target variable not found in data.")
   }
@@ -36,7 +41,11 @@ groupbn<-function(hierarchy, k, target, separate=NULL, X.quanti, X.quali, debug=
   P<-ClustOfVar::cutreevar(hierarchy, k=k)
   res$grouping<-P$cluster
   res$group.data<-P$scores
-
+  for (i in 1:length(res$pca.param)){
+      pc<-PCAmix.groupbn(X.quanti, X.quali, names(which(res$grouping==i)), seed=seed)
+      res$pca.param[[i]]<-pc
+      res$group.data[,i]<-pc$scores[,1]
+  }
   #data preprocessing
   res<-group.data.preproc(res, seed=seed)
 
@@ -56,7 +65,11 @@ groupbn<-function(hierarchy, k, target, separate=NULL, X.quanti, X.quali, debug=
   ##############################
 
   #learn a network from complete cases
-  net<-network(data.scores[complete.cases(data.scores),], R=R, seed=seed, debug=debug)
+  blacklist<-NULL
+  if(!is.null(separate)&separate.as.roots){
+    blacklist<-groupbn.build.blacklist(data.scores, separate)
+  }
+  net<-network(data.scores[complete.cases(data.scores),], R=R, seed=seed, debug=debug, blacklist=blacklist)
   res$bn<-net[[1]]
   res$arc.confid<-net[[2]]
 
@@ -83,7 +96,7 @@ groupbn<-function(hierarchy, k, target, separate=NULL, X.quanti, X.quali, debug=
   return(res)
 }
 
-groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, perturb=1, max.step=10, max.min=300, R=100, return.all=FALSE, debug=FALSE, seed=NULL){
+groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, perturb=1, max.step=10, max.min=Inf, R=100, return.all=FALSE, debug=FALSE, seed=NULL){
   #hierarchy: cluster object from ClustOfVar
   #res: groupbn object
   #perturb: perturbations per restart
@@ -112,6 +125,11 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
   disc.param<-res$disc.param
   n<-max(cluster)
   data<-cbind(X.quanti, X.quali)
+  if(!is.null(separate)){
+    separate.as.roots<-attr(res$separate, "separate.as.roots")
+  } else {
+    separate.as.roots<-FALSE
+  }
 
   ##############################
   ####Adaptive Refinement#######
@@ -174,6 +192,7 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
       }
       if(refinement.part=="all"){
         listnod<-bnlearn::nodes(net)[-which(bnlearn::nodes(net)%in%c(target, separate))]
+        listnod<-unique(listnod)
       }
 
       #remove age and sex from the list (cannot be split)
@@ -290,7 +309,10 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
       #  next
       #}
       #learn network for perturbed cluster structure
-      netw<-network(data.scores[complete.cases(data.scores),], R=R, seed=seed, debug=F)
+      if(!is.null(separate)&separate.as.roots){
+        blacklist<-groupbn.build.blacklist(data.scores[complete.cases(data.scores),], separate)
+      }
+      netw<-network(data.scores[complete.cases(data.scores),], R=R, seed=seed, debug=F, blacklist=blacklist)
       net<-netw[[1]]
       arc.confid<-netw[[2]]
       result<-validation(net, data.scores, target, seed=seed, debug=F)
@@ -308,7 +330,7 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
       if(debug) {message(".......................................................")}
       if(debug) {message("Iteration ", step)}
       if(step==max.step+1){
-        message("Did not converge in ", max.step, " iterations. Stopped.")
+        message("Stopped after the maximum of ", max.step, " iterations. Set max.step higher for full optimization.")
         break
       }
 
@@ -324,8 +346,8 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
         listnod<-unique(listnod)
       } else if(refinement.part=="all"){      #all
       listnod<-bnlearn::nodes(net)[-which(bnlearn::nodes(net)%in%c(target, separate))]
+      listnod<-unique(listnod)
       }
-
       #add markov blanket of markov blanket
       #for(g in listnod){
       #  listnod<-c(listnod, mb(net, g))
@@ -426,11 +448,14 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
           if(is.factor(data[,splits[[j]]])){
             #if it is already a factor
             data.scores1[,n+1]<-data[,splits[[j]]]
+            disc.param1[[n+1]]<-NULL
+            pca.param1[[n+1]]<-NULL
           }else{
             #if it is continuous: discretize
             disc<-discretize.dens(data[,splits[[j]]], cluster=F, seed=seed)
             data.scores1[,n+1]<-as.factor(disc$discretized)
             disc.param1[[n+1]]<-disc$levels
+            pca.param1[[n+1]]<-NULL
           }
         }else{
           names<-colnames(data)[splits[[j]]]
@@ -451,7 +476,11 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
         start=bnlearn::empty.graph(nodes=colnames(data.scores1))
         arcs(start)<-bnlearn::arcs(net)[-which(arcs(net)[,1]==node|arcs(net)[,2]==node),]
         start<-bnlearn::cextend(start)
-        netw1<-network(data.scores1[complete.cases(data.scores1),], R=R, start=start, seed=seed, debug=F)
+        blacklist<-NULL
+        if(!is.null(separate)&separate.as.roots){
+          blacklist<-groupbn.build.blacklist(data.scores1[complete.cases(data.scores1),], separate)
+        }
+        netw1<-network(data.scores1[complete.cases(data.scores1),], R=R, start=start, seed=seed, debug=F, blacklist=blacklist)
         net1<-netw1[[1]]
         arc.confid1<-netw1[[2]]
         #Scoring
@@ -467,18 +496,17 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
         #disc.param.help[[s]]<-disc.param1
         return(list(data.scores1, cluster1, net1, arc.confid1, result1, pca.param1, disc.param1))
       }
-      #nbh<-rearrange.listoflists(lapply(listnod, eval.neighbourhood))
-      nbh<-purrr::transpose(lapply(listnod, eval.neighbourhood))
-      data.scores.help<-nbh[[1]]
-      cluster.help<-nbh[[2]]
-      net.help<-nbh[[3]]
-      arc.confid.help<-nbh[[4]]
-      result.help<-nbh[[5]]
-      pca.param.help<-nbh[[6]]
-      disc.param.help<-nbh[[7]]
+      nbh<-lapply(listnod, eval.neighbourhood)
+      data.scores.help<- sapply(nbh, `[`, 1)
+      cluster.help<-sapply(nbh, `[`, 2)
+      net.help<-sapply(nbh, `[`, 3)
+      arc.confid.help<-sapply(nbh, `[`, 4)
+      result.help<-sapply(nbh, `[`, 5)
+      pca.param.help<-sapply(nbh, `[`, 6)
+      disc.param.help<-sapply(nbh, `[`, 7)
       #compare prediction of each network and keep the best
-      if(debug){message("Scores: ", paste(round(unlist(lapply(result.help, `[`, 1)),2), collapse=" "))}
-      if(debug) {message("Score before: ", round(result,2), ", threshold: ", round(attr(result, "error.th"),2))}
+      if(debug){message("Scores: ", paste(round(unlist(lapply(result.help, `[`, 1)),5), collapse=" "))}
+      if(debug) {message("Score before: ", round(result,5), ", threshold: ", round(attr(result, "error.th"),5))}
 
       #minimum better than before?
       if(suppressWarnings(min(unlist(lapply(result.help, `[`, 1)), na.rm=T))==Inf|(suppressWarnings(min(unlist(lapply(result.help, `[`, 1)), na.rm=T))>attr(result, "error.th"))){
@@ -486,20 +514,20 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
         cluster[target]<-k+1
         break
       }
-      if(suppressWarnings(min(unlist(lapply(result.help, `[`, 1)), na.rm=T))<1){
-        choose<-which.min(unlist(lapply(result.help, `[`, 1)))
-        if(debug){message("Chosen to split: ",listnod[choose]," (",choose, ")")}else{message("Split: ", listnod[choose])}
-        data.scores<-data.scores.help[[choose]]
-        cluster<-cluster.help[[choose]]
-        net<-net.help[[choose]]
-        arc.confid<-arc.confid.help[[choose]]
-        result.list<-lappend(result.list, result.help[[choose]])
-        result<-result.help[[choose]]
-        disc.param<-disc.param.help[[choose]]
-        pca.param<-pca.param.help[[choose]]
-        n<-n+1
-        break
-      }
+      # if(suppressWarnings(min(unlist(lapply(result.help, `[`, 1)), na.rm=T))<1){
+      #   choose<-which.min(unlist(lapply(result.help, `[`, 1)))
+      #   if(debug){message("Chosen to split: ",listnod[choose]," (",choose, ")")}else{message("Split: ", listnod[choose])}
+      #   data.scores<-data.scores.help[[choose]]
+      #   cluster<-cluster.help[[choose]]
+      #   net<-net.help[[choose]]
+      #   arc.confid<-arc.confid.help[[choose]]
+      #   result.list<-lappend(result.list, result.help[[choose]])
+      #   result<-result.help[[choose]]
+      #   disc.param<-disc.param.help[[choose]]
+      #   pca.param<-pca.param.help[[choose]]
+      #   n<-n+1
+      #   break
+      # }
       if (suppressWarnings(min(unlist(lapply(result.help, `[`, 1)), na.rm=T))<=attr(result, "error.th")&l==1){
         choose<-1
         if(debug){message("Chosen to split: ",listnod[choose]," (",choose, ")")}else{message("Split: ", listnod[choose])}
@@ -545,12 +573,6 @@ groupbn_refinement<-function(res, hierarchy, refinement.part="mb", restart=0, pe
       res$fit<-bnlearn::bn.fit(bnlearn::cextend(net), data.scores[stats::complete.cases(data.scores),], method="bayes")
     }
     res$score<-result
-
-    for (i in 1:length(res$pca.param)){
-      if(is.null(res$pca.param[[i]])){
-        res$pca.param[[i]]<-PCAmix.groupbn(X.quanti, X.quali, names(which(res$grouping==i)), seed=seed)
-      }
-    }
 
     restart.list[[re+2]]<-res
     message("Run ", re+1, " of ",restart+1," done.")

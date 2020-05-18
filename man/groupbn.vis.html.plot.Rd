@@ -9,7 +9,8 @@ Create an interactive html network object with visNet (displaying similarity sco
 }
 \usage{
 groupbn.vis.html.plot(res, df=NULL, save.file=TRUE, save.name=NULL,
-hierarchical=FALSE, nodecolor.all="#E0F3F8", nodecolor.special="black", main=NULL)
+hierarchical=FALSE, nodecolor.all="#E0F3F8",
+nodecolor.special="cornflowerblue", main=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{

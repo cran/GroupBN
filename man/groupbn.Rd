@@ -9,7 +9,7 @@
 %%  ~~ A concise (1-5 lines) description of what the function does. ~~
 }
 \usage{
-groupbn(hierarchy, k, target, separate, X.quanti, X.quali,
+groupbn(hierarchy, k, target, separate, separate.as.roots=FALSE, X.quanti, X.quali,
 debug=FALSE, R=100, seed=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -18,6 +18,7 @@ debug=FALSE, R=100, seed=NULL)
   \item{k}{a positive integer number, the number of initial clusters.}
   \item{target}{a string, the name of the target variable.}
   \item{separate}{a vector of strings, names of variables that should be separated from the groups, such as age, sex,...}
+  \item{separate.as.roots}{a boolean; if TRUE separated variables are used as roots in the network. Can be ignored if separate is empty.}
   \item{X.quanti}{a numeric matrix of data,
   or an object that can be coerced to such a matrix
   (such as a numeric vector or a data frame with all numeric columns).}

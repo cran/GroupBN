@@ -9,7 +9,7 @@ using hierarchical Clustering
 }
 \usage{
 groupbn_refinement(res, hierarchy, refinement.part="mb", restart=0, perturb=1,
-max.step=10, max.min=300, R=100, return.all=FALSE, debug=FALSE, seed=NULL)
+max.step=10, max.min=Inf, R=100, return.all=FALSE, debug=FALSE, seed=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -19,7 +19,7 @@ max.step=10, max.min=300, R=100, return.all=FALSE, debug=FALSE, seed=NULL)
   \item{restart}{a positive integer number, the number of restarts}
   \item{perturb}{a positive integer number, the number of perturbations (splits) in each restart}
   \item{max.step}{a positive integer number, the maximal number of refinement steps, default is 10}
-   \item{max.min}{a positive integer number, the maximal run time in minutes, default is 300}
+   \item{max.min}{a positive integer number, the maximal run time in minutes, default is unlimited}
   \item{R}{number of bootstrap replicates for model averaging, default is 100}
   \item{return.all}{a boolean, if TRUE, the output is a whole list of group models, if FALSE, the output is only the best-scoring model.}
   \item{debug}{a boolean,
@@ -63,7 +63,7 @@ X.quanti=wine.test[,3:29], X.quali=wine.test[,1:2], seed=321)
 #Do one refinement step
 #Set max.step higher to optimize completely
 wine.groupbn.refined<-groupbn_refinement(wine.groupbn, hierarchy,
-refinement="mb", max.step = 1, seed=321)
+refinement.part="mb", max.step = 1, seed=321)
 
 #Plot refined network
 plot(wine.groupbn.refined)

@@ -9,19 +9,21 @@ using hierarchical Clustering
 }
 \usage{
 groupbn_refinement(res, hierarchy, refinement.part="mb", restart=0, perturb=1,
-max.step=10, max.min=Inf, R=100, return.all=FALSE, debug=FALSE, seed=NULL)
+max.step=10, max.min=Inf, R=100,
+return.all=FALSE, arc.thresh=NULL, debug=FALSE, seed=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{res}{an object of class groupbn}
   \item{hierarchy}{a cluster object from ClustOfVar}
-  \item{refinement.part}{"mb", "mb2" or "all", selects if the refinement steps should be done only within the markov blanket of the target variable, within the second-order markov blanket or within all clusters. Default: "mb"}
+  \item{refinement.part}{"mb", "mb2", "arc.confid" or "all", selects if the refinement steps should be done only within the markov blanket of the target variable (mb), within the second-order markov blanket (mb2), in all clusters with an arcconfidence to target >0 (arc.confid) or within all clusters (all). Default: "mb"}
   \item{restart}{a positive integer number, the number of restarts}
   \item{perturb}{a positive integer number, the number of perturbations (splits) in each restart}
   \item{max.step}{a positive integer number, the maximal number of refinement steps, default is 10}
    \item{max.min}{a positive integer number, the maximal run time in minutes, default is unlimited}
   \item{R}{number of bootstrap replicates for model averaging, default is 100}
   \item{return.all}{a boolean, if TRUE, the output is a whole list of group models, if FALSE, the output is only the best-scoring model.}
+  \item{arc.thresh}{threshold for bootstrap arcs}
   \item{debug}{a boolean,
   if TRUE, debugging messages are printed}
   \item{seed}{a random seed number}
@@ -40,7 +42,7 @@ returns an object of class groupbn
 %%  ~~who you are~~
 }
 %% ~Make other sections like Warning with \section{Warning }{....} ~
-
+\references{Becker A-K, Dörr M, Felix SB, Frost F, Grabe HJ, Lerch MM, et al. (2021) From heterogeneous healthcare data to disease-specific biomarker networks: A hierarchical Bayesian network approach. PLoS Comput Biol 17(2): e1008735. https://doi.org/10.1371/journal.pcbi.1008735}
 \seealso{
 \code{\link{groupbn}}
 \code{\link{groupbn.output.table}}

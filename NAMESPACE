@@ -1,4 +1,4 @@
-export(groupbn, groupbn_refinement, cross.en, discretize.dens, groupbn.output.table, plot.groupbn, groupbn.vis.html.plot, is.groupbn, print.groupbn, predict.groupbn)
+export(groupbn, groupbn_refinement, groupbn_refine_manually, cross.en, discretize.dens, groupbn.output.table, plot.groupbn, groupbn.vis.html.plot, is.groupbn, print.groupbn, predict.groupbn)
 import("ClustOfVar", "PCAmixdata", "visNetwork", "zoo")
 import("bnlearn", except=c("discretize"))
 importFrom("magrittr", "%>%")

@@ -22,7 +22,7 @@ cross.en<-function(pred, obs, sdpred=NULL,weighted=T){
     loss<-0
     for (i in 1:length(pred[!is.na(pred[,1]),1])){
       for (j in 1:k){
-        if(obs[i]==j&!is.na(pred[i,1])){
+        if(obs[i]==levels(obs)[j]&!is.na(pred[i,1])){
           loss<-loss-weight[i]*log2(pred[i,j])
         }
       }
@@ -47,12 +47,13 @@ cross.en<-function(pred, obs, sdpred=NULL,weighted=T){
 }
 
 #discretize and factorize scores of a groupbn object
-disc.scores<-function(res, seed=NULL){
+disc.scores<-function(res, discretize, seed=NULL){
   k<-max(res$grouping)
   param<-res$disc.param
   data.scores<-res$group.data
   colnames(data.scores)<-paste("cl", 1:k, sep="")
   data.scores<-as.data.frame(data.scores)
+  if(discretize){
   data.scores.dist<-data.scores
   for (i in 1:dim(data.scores.dist)[2]){
     title<-colnames(data.scores)[i]
@@ -60,10 +61,12 @@ disc.scores<-function(res, seed=NULL){
     disc<-discretize.dens(data.scores.dist[,i], cluster=T, title=title, seed=seed)
     data.scores.dist[,i]<-as.factor(disc$discretized)
     param[[i]]<-disc$levels
-
   }
   res$group.data<-data.scores.dist
   res$disc.param<-param
+  } else {
+    res$group.data<-data.scores
+  }
   return(res)
 }
 
@@ -92,7 +95,7 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
     }
   }
   #check if a cluster already has a limited number of states (<10)
-  if (cluster==T&length(table(as.factor(data))[table(as.factor(data))>1])<10&length(table(as.factor(data))[table(as.factor(data))>1])>1){
+  if (cluster==T&length(table(as.factor(data))[table(as.factor(data))>1])<5&length(table(as.factor(data))[table(as.factor(data))>1])>1){
     m<-nlevels(as.factor(data))
     #all levels exist more than once in the data (then keep all levels)
     if(all(table(as.factor(data))>1)){
@@ -197,7 +200,10 @@ discretize.dens<-function(data, graph=F, title="Density-approxmative Discretizat
       range<-abs(stats::quantile(data, prob=0.05, na.rm=T)-stats::quantile(data, prob=0.95, na.rm=T))
       if (dist.max<range/5){
         int<-int+1
-        d<-arules::discretize(data, method="cluster", centers=c(max[1,],mean(data, na.rm=T)+0.3))
+        d<-try(arules::discretize(data, method="cluster", centers=c(max[1,],mean(data, na.rm=T)+0.3)), silent = T)
+        if(inherits(d,"try-error")){
+          d<-arules::discretize(data, method="cluster", centers=length(max[1,])+1)
+        }
       }
       else{
         d<-arules::discretize(data, method="cluster", centers=max[1,])
@@ -412,7 +418,7 @@ graphviz.plot.neighbourhood<-function(net, target=NULL, layer=1){
 
 #group data, discretize and factorize and separate target etc.
 #res: groupbn object with data, target, separate, grouping
-group.data.preproc<-function(res, seed=NULL){
+group.data.preproc<-function(res, discretize, seed=NULL){
   if (!is.null(seed)) {set.seed(seed)}
   #combine data
   X.quanti=res$X.quanti
@@ -426,7 +432,7 @@ group.data.preproc<-function(res, seed=NULL){
   }
 
   #discretize aggregation variables
-  res<-disc.scores(res, seed=seed)
+  res<-disc.scores(res, discretize=discretize, seed=seed)
   cluster<-res$grouping
   k<-max(cluster)
   n<-max(cluster)
@@ -446,19 +452,35 @@ group.data.preproc<-function(res, seed=NULL){
         cl.target<-cluster[target]
         cl.target.names<-names(which(cluster==cl.target))
         cl.target.names<-cl.target.names[-which(cl.target.names==target)]
+        if(length(cl.target.names)==0){
+        colnames(data.scores)[cl.target]<-target
+        data.scores[,cl.target]<-target.data
+        } else {
         #do pca
         pc<-PCAmix.groupbn(X.quanti, X.quali, cl.target.names, seed=seed)
         res$pca.param[[cl.target]]<-pc
         #discretize score
-        disc<-discretize.dens(pc$scores[,1], cluster=T, seed=seed)
-        data.scores[,cl.target]<-as.factor(disc$discretized)
-        res$disc.param[[cl.target]]<-disc$levels
-        data.scores<-cbind(data.scores, target.data)
-        colnames(data.scores)[length(colnames(data.scores))]<-target
-        cluster[target]<-n+1
-        res$disc.param<-lappend(res$disc.param, NULL)
-        res$pca.param<-lappend(res$pca.param, NULL)
-        n<-n+1
+        if(discretize){
+          disc<-discretize.dens(pc$scores[,1], cluster=T, seed=seed)
+          data.scores[,cl.target]<-as.factor(disc$discretized)
+          res$disc.param[[cl.target]]<-disc$levels
+          data.scores<-cbind(data.scores, target.data)
+          colnames(data.scores)[length(colnames(data.scores))]<-target
+          cluster[target]<-n+1
+          res$disc.param<-lappend(res$disc.param, NULL)
+          res$pca.param<-lappend(res$pca.param, NULL)
+          n<-n+1
+        } else {
+          data.scores[,cl.target]<-pc$scores[,1]
+          res$disc.param[[cl.target]]<-NULL
+          data.scores<-cbind(data.scores, target.data)
+          colnames(data.scores)[length(colnames(data.scores))]<-target
+          cluster[target]<-n+1
+          res$disc.param<-lappend(res$disc.param, NULL)
+          res$pca.param<-lappend(res$pca.param, NULL)
+          n<-n+1
+        }
+        }
     }
   }
   if(!is.null(separate)){
@@ -467,35 +489,58 @@ group.data.preproc<-function(res, seed=NULL){
       if(!(variable%in%colnames(data))){
         stop("Could not find variable")
       } else {
+        variable.number<-which(colnames(data)==variable)
+        cl.variable<-cluster[variable.number]
+        cl.variable.names<-names(which(cluster==cl.variable))
+        cl.variable.names<-cl.variable.names[-which(cl.variable.names==variable)]
+        if(length(cl.variable.names)==0){
+          colnames(data.scores)[cl.variable]<-variable
+          if (variable%in%colnames(X.quanti)){
+            #discretize data
+            if(discretize){
+            disc<-discretize.dens(X.quanti[,variable], seed=seed)
+            variable.data<-as.factor(disc$discretized)
+            #res$pca.param[[cl.variable]]<-NULL
+            res$disc.param[[cl.variable]]<-disc$levels
+            } else {
+              variable.data<-X.quanti[,variable]
+            }
+          } else if (variable%in%colnames(X.quali)){
+            variable.data<-X.quali[variable]
+          }
+          data.scores[,cl.variable]<-variable.data
+        } else {
         res$disc.param<-lappend(res$disc.param, NULL)
         res$pca.param<-lappend(res$pca.param, NULL)
-
         if (variable%in%colnames(X.quanti)){
           #discretize data
-          disc<-discretize.dens(X.quanti[,variable], seed=seed)
-          variable.data<-as.factor(disc$discretized)
-          res$pca.param[[n+1]]<-NULL
-          res$disc.param[[n+1]]<-disc$levels
+          if(discretize){
+            disc<-discretize.dens(X.quanti[,variable], seed=seed)
+            variable.data<-as.factor(disc$discretized)
+            #res$pca.param[[n+1]]<-NULL
+            res$disc.param[[n+1]]<-disc$levels
+          }else {
+            variable.data<-X.quanti[,variable]
+          }
         } else if (variable%in%colnames(X.quali)){
           variable.data<-X.quali[variable]
         }
-
-        variable.number<-which(colnames(data)==variable)
-        cl.variable<-cluster[variable]
-        cl.variable.names<-names(which(cluster==cl.variable))
-        cl.variable.names<-cl.variable.names[-which(cl.variable.names==variable)]
         #do pca
         pc<-PCAmix.groupbn(X.quanti, X.quali, cl.variable.names, seed=seed)
         res$pca.param[[cl.variable]]<-pc
         #discretize score
-        disc<-discretize.dens(pc$scores[,1], cluster=T, seed=seed)
-        data.scores[,cl.variable]<-as.factor(disc$discretized)
-        res$disc.param[[cl.variable]]<-disc$levels
-
+        if(discretize){
+          disc<-discretize.dens(pc$scores[,1], cluster=T, seed=seed)
+          data.scores[,cl.variable]<-as.factor(disc$discretized)
+          res$disc.param[[cl.variable]]<-disc$levels
+        } else {
+          data.scores[,cl.variable]<-pc$scores[,1]
+        }
         data.scores<-cbind(data.scores, variable.data)
         colnames(data.scores)[length(colnames(data.scores))]<-variable
         cluster[variable]<-n+1
         n<-n+1
+        }
       }
     }
   }
@@ -506,9 +551,11 @@ group.data.preproc<-function(res, seed=NULL){
       pc<-PCAmix.groupbn(X.quanti, X.quali, cl.variable.names, seed=seed)
       res$pca.param[[i]]<-pc
       #discretize score
+      if(discretize){
       disc<-discretize.dens(pc$scores[,1], cluster=T, seed=seed)
       #data.scores[,cl.variable]<-as.factor(disc$discretized)
       res$disc.param[[i]]<-disc$levels
+      }
     }
   }
   res$group.data<-data.scores
@@ -542,27 +589,78 @@ comb.output.scores<-function(x,...,n=13){
 
 #Learn Network
 #data: Dataframe without missing values
-network<-function(data, start=NULL, R=200, restart=5, perturb=max(1,round(0.1*dim(data)[2])), blacklist=NULL, debug=F, seed=NULL){
+network<-function(data, start=NULL, R=200, restart=5, perturb=max(1,ifelse(is.null(start), round(0.1*dim(data)[2]), round(0.1*narcs(start)))), blacklist=NULL, arc.thresh=NULL, struct.alg=NULL, boot=TRUE, debug=F, seed=NULL){
   if(debug){message("learning arcs")}
   if(!is.null(seed)){set.seed(seed)}
+  if(is.null(struct.alg)){stop("Please specify a structure learning algorithm.")}
+  data<-as.data.frame(data)
+  #print(head(data)) #debugging
   #arcs<-suppressWarnings(bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist)))
-  arcs<-bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist))
-  net<-bnlearn::averaged.network(arcs)
-  res <- try(bnlearn::cextend(net), silent = T)
-  #try if extension is possible
-  while(inherits(res, "try-error")){
-    message("try-error")
-    arcs<-bnlearn::boot.strength(data, R=R, algorithm = "hc", algorithm.args = list(restart=restart, perturb=perturb,  blacklist=blacklist))
-    net<-bnlearn::averaged.network(arcs)
-    res <- try(bnlearn::cextend(net))
+  if(boot){
+    if(struct.alg=="tabu"){
+      arcs<-bnlearn::boot.strength(data, R=R, algorithm = struct.alg, algorithm.args = list(start=start, blacklist=blacklist))
+      net<-bnlearn::averaged.network(arcs)
+      if(!is.null(arc.thresh)){
+        net<-bnlearn::averaged.network(arcs, threshold = arc.thresh)
+      }
+      res <- try(bnlearn::cextend(net), silent = T)
+      #try if extension is possible
+      count<-1
+      while(inherits(res, "try-error")&count<=10){
+        message("try-error")
+        count<-count+1
+        arcs<-bnlearn::boot.strength(data, R=R, algorithm = struct.alg, algorithm.args = list(blacklist=blacklist))
+        net<-bnlearn::averaged.network(arcs)
+        if(!is.null(arc.thresh)){
+          net<-bnlearn::averaged.network(arcs, threshold = arc.thresh)
+        }
+        res <- try(bnlearn::cextend(net))
+      }
+      if(count>10){stop("No extension of the net is possible.")}
+    } else if(struct.alg=="hc"){
+      arcs<-bnlearn::boot.strength(data, R=R, algorithm = struct.alg, algorithm.args = list(restart=restart, perturb=perturb, start=start, blacklist=blacklist))
+      net<-bnlearn::averaged.network(arcs)
+      if(!is.null(arc.thresh)){
+        net<-bnlearn::averaged.network(arcs, threshold = arc.thresh)
+      }
+      res <- try(bnlearn::cextend(net), silent = T)
+      #try if extension is possible
+      count<-1
+      while(inherits(res, "try-error")&count<=10){
+        message("try-error")
+        count<-count+1
+        arcs<-bnlearn::boot.strength(data, R=R, algorithm = struct.alg, algorithm.args = list(restart=restart, perturb=perturb,  blacklist=blacklist))
+        net<-bnlearn::averaged.network(arcs)
+        if(!is.null(arc.thresh)){
+          net<-bnlearn::averaged.network(arcs, threshold = arc.thresh)
+        }
+        res <- try(bnlearn::cextend(net))
+      }
+      if(count>10){stop("No extension of the net is possible.")}
+    } else {
+      stop("bootstrapping is only implemented in combination with score-based algorithms.")
+    }
+  } else {
+    bnlearn.struct.alg<-match.fun(struct.alg)
+    net<-bnlearn.struct.alg(data, blacklist=blacklist)
+    res <- try(bnlearn::cextend(net), silent = T)
+    count<-1
+    while(inherits(res, "try-error")&count<=10){
+      message("try-error")
+      count<-count+1
+      net<-bnlearn.struct.alg(data, blacklist=blacklist)
+      res <- try(bnlearn::cextend(net))
+    }
+    if(count>10){stop("No extension of the net is possible.")}
+    arcs<-NULL
   }
-  return(list(net=net, arc.confid<-arcs))
+  return(list(net=net, arc.confid=arcs))
 }
 
 #res: groupbn object
 #save.name: filename for saving
 #pdf: Boolean, should the file be saved as pdf
-groupbn.output.table<-function(res){
+groupbn.output.table<-function(res, with.scores=TRUE){
   net<-res$bn
   X.quali<-res$X.quali
   X.quanti<-res$X.quanti
@@ -598,6 +696,7 @@ groupbn.output.table<-function(res){
   }
 
   #add scores
+  if(with.scores){
   for (i in 1:max.len){
     for (j in 1:max(cluster)){
       if (df[i,j]!=""){
@@ -611,6 +710,7 @@ groupbn.output.table<-function(res){
         }
       }
     }
+  }
   }
   invisible(df)
 }
@@ -642,6 +742,7 @@ PCAmix.groupbn<-function(X.quanti, X.quali, names, graph=FALSE, seed=NULL){
     #both
     df1<-X.quanti[,quanti.names, drop=F]
     df2<-X.quali[,quali.names, drop=F]
+
     pc<-PCAmixdata::PCAmix(X.quanti=df1, X.quali=df2, graph=graph, rename.level=TRUE)
   }
   return(pc)
@@ -661,7 +762,6 @@ rem.id.col<-function(X.quali){
       vars.rem<-c(vars.rem, names(t)[i])
     }
   }
-  return(vars.rem)
 }
 
 #get division of one cluster to the next two clusters, vars=indices of variables
@@ -677,11 +777,11 @@ split.cluster<-function(vars, ME){
 #if do.fit=T, fitting is done within the function
 #if do.fit=F, net must be an already fitted object of class bn.fit , method %in% c("parents", "bayes-lw)
 #n bootstapping for probability estimation
-validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method="bayes-lw", debug=F, seed=seed){
+validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 , from=NULL, method="bayes-lw", debug=F, seed=NULL){
   if (!is.null(seed)) {set.seed(seed)}
   if(do.fit){
     if(debug){message("fitting")}
-      if (is.factor(data[[target]])){
+      if (is.factor(data[[target]])&all(sapply(data, is.factor))){
         fit<-bnlearn::bn.fit(cextend(net), data, method="bayes")
       } else {
         fit<-bnlearn::bn.fit(cextend(net), data)
@@ -701,7 +801,7 @@ validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method=
   if(!is.factor(obs)){
     temp<-sapply(1:dim(data)[1], function(j){
       if(sum(is.na(data[j, -which(colnames(data)==target)]))==0){
-        prob<-replicate(10, predict(object=fit, node=target, data=data[j, -which(colnames(data)==target)], method = method, n=n))
+        prob<-replicate(10, predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F], method = method, n=n))
         return(c(mean(prob), stats::sd(prob)))
       }
       else{
@@ -727,13 +827,13 @@ validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method=
     #stop('implemented only for a categorical target variable with 2-4 levels. Haha')
   } else if(nlevels(factor(obs))<2|nlevels(factor(obs))>4){
     stop('implemented only for a categorical target variable with 2-4 levels')
-  } else if(nlevels(factor(obs))>2){
+  } else if(nlevels(factor(obs))>2&all(sapply(data, is.factor))){
     k<-nlevels(obs)
     levels(obs)<-0:(k-1)
     p<-matrix(0, dim(data)[1], k)
     for (j in 1:dim(data)[1]){
       if(sum(is.na(data[j, -which(colnames(data)==target)]))==0){
-        p[j,]<-attr(predict(object=fit, node=target, data=data[j, -which(colnames(data)==target)], method = method, n=n, prob = TRUE), "prob")
+        p[j,]<-attr(predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F], method = method, n=n, prob = TRUE), "prob")
       }
       else{
         p[j,]<-rep(NA,k)
@@ -741,22 +841,28 @@ validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method=
     }
     #transform probabilities to predictions
     predictions<-apply(p,1, which.max)-1
-    predictions<-factor(predictions, levels=c(0:k))
+    predictions<-factor(predictions, levels=c(0:(k-1)))
 
     #calculate results
     result<-cross.en(p, obs, weighted=T)
-    attr(result, "scores") <- NA
+    x<-paste("cross-entr.: ", round(result/sum(!is.na(p[,1])),2))
+    attr(result, "scores") <- x
     attr(result, "auc")<- NA
-    attr(result, "sd")<- NA
+    attr(result, "error.th")<- result/sum(!is.na(p[,1]))
     attr(result, "confusion") <- table(obs, predictions)
     attr(result, "pscores")<-p
+    result<-result/sum(!is.na(p[,1]))
     if(debug){print(table(predictions,obs))}
     return(result)
-  } else {
+  } else if (nlevels(factor(obs))==2&all(sapply(data, is.factor))) {
   levels(obs)<-c(0,1)
   temp<-sapply(1:dim(data)[1], function(j){
     if(sum(is.na(data[j, -which(colnames(data)==target)]))==0){
-      prob<-replicate(10, attr(predict(object=fit, node=target, data=data[j, -which(colnames(data)==target)], method = method, n=n, prob = TRUE), "prob")[1])
+      if(is.null(from)){
+        prob<-replicate(10, attr(predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F], method = method, n=n, prob = TRUE), "prob")[1])
+      } else {
+        prob<-replicate(10, attr(predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F], method = method, n=n, prob = TRUE, from=from), "prob")[1])
+      }
       return(c(mean(prob), stats::sd(prob)))
     }
     else{
@@ -785,27 +891,59 @@ validation<-function(net, data, target, thresh=0.5, do.fit=TRUE, n=2000 ,method=
   pr2<-roc.cu$auc
   result<-cross.en(p, obs)
   result.error<-cross.en(p, obs, weighted=T,sdpred=sdprob)
-  x<-paste("F1: ",round(f11,2),"; Precision: ", round(pre1,2), "; Recall: ", round(re1,2), "; AUC-PR: ", round(pr1,3), "; AUC-ROC: ", round(pr2,3), "; cross-entr.: ", round(result,2))
+  x<-paste("F1: ",round(f11,2),"; Precision: ", round(pre1,2), "; Recall: ", round(re1,2), "; AUC-PR: ", round(pr1,3), "; AUC-ROC: ", round(pr2,3), "; cross-entr.: ", round(result/sum(!is.na(p)),2))
   if(debug){message(x)}
   attr(result, "scores") <- x
   attr(result, "auc")<-roc.cu$auc
-  attr(result, "error.th")<-(result.error+(result-result.error)/2)/sum(!is.na(p))
+  attr(result, "error.th")<-(result.error+(result-result.error)*3/4)/sum(!is.na(p))
   attr(result, "confusion")<-table(obs, predictions)
   attr(result, "pscores")<-1-p
   if(debug){print(table(pred=predictions,obs=obs))}
   result<-result/sum(!is.na(p))
   return(result)
+  } else if (nlevels(factor(obs))==2&!all(sapply(data, is.factor))) {
+    levels(obs)<-c(0,1)
+    p<-c()
+    for(j in 1:dim(data)[1]){
+      if(sum(is.na(data[j, -which(colnames(data)==target)]))==0){
+        if(is.null(from)){
+          p<-c(p,predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F], method = method, n=n))
+        } else {
+          p<-c(p,predict(object=fit, node=target, data=data[j, -which(colnames(data)==target), drop=F],from=from, method = method, n=n))
+        }
+      } else{
+        p<-c(p,NA)
+      }
+    }
+    #transform probabilities to predictions
+    predictions<-p
+    #calculate different scores
+    f11<-MLmetrics::F1_Score(y_true=obs[!is.na(predictions)], y_pred = predictions[!is.na(predictions)], positive=1)
+    pre1<-MLmetrics::Precision(y_true=obs[!is.na(predictions)], y_pred = predictions[!is.na(predictions)], positive=1)
+    re1<-MLmetrics::Recall(y_true=obs[!is.na(predictions)], y_pred = predictions[!is.na(predictions)], positive=1)
+    x<-paste("F1: ",round(f11,2),"; Precision: ", round(pre1,2), "; Recall: ", round(re1,2))
+    result<-f11
+    if(debug){message(x)}
+    attr(result, "scores") <- x
+    attr(result, "error.th")<-result
+    attr(result, "confusion")<-table(obs, predictions)
+    attr(result, "pscores")<-p
+    if(debug){print(table(pred=predictions,obs=obs))}
+    result<-result
+    return(result)
   }
 }
 
+
 #NEU:
-predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data=F, ...){
+predict.groupbn<-function(object, X.quanti, X.quali, rename.level=FALSE, return.data=FALSE, new.fit=FALSE, debug=FALSE,...){
   if(length(setdiff(colnames(X.quali),colnames(object$X.quali)))>0 | length(setdiff(colnames(object$X.quali),colnames(X.quali)))){
     stop("The variables in X.quali must be the same in the model and in the testdata.")
   }
   if(length(setdiff(colnames(X.quanti),colnames(object$X.quanti)))>0 | length(setdiff(colnames(object$X.quanti),colnames(X.quanti)))){
     stop("The variables in X.quanti must be the same in the model and in the testdata.")
   }
+  if(debug){message("Data checked.")}
   #initialize a data.frame
   df <- data.frame(matrix(ncol = max(object$grouping), nrow = nrow(X.quanti)))
   colnames(df)<-paste("cl", levels(as.factor(object$grouping)), sep="")
@@ -813,83 +951,98 @@ predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data
   scores<-object$grouping
 
   #Predict Principal Components
+  if(debug){message("Predict PCA:")}
   for (clus in 1:max(object$grouping)){
+    if(debug){message(clus, " of ", max(object$grouping))}
     #split quali and quanti variables of a cluster
     quanti.names<-names(which(object$grouping==clus))[which(names(which(object$grouping==clus))%in%colnames(X.quanti))]
     quali.names<-names(which(object$grouping==clus))[which(names(which(object$grouping==clus))%in%colnames(X.quali))]
-
-    nr.vars<-length(quanti.names)+length(quali.names)
-
-    #test for all identical factor levels
-    uni<-apply(X.quali[,quali.names, drop=F],2, FUN=function(x){length(stats::na.omit(unique(x)))})
-    if (any(uni==1)){
-      #add hypothetical sample with missing levels
-      nr.added<-length(which(uni==1))
-      lvl.miss<-rep(0,length(which(uni==1)))
-      for (unix in 1:nr.added){
-        lvl.miss[unix]<-length(names(which(table(X.quali[,names(which(uni==1))[unix]])==0)))
+    if(!is.null(object$pca.param[[clus]])){
+      if(!is.null(object$pca.param[[clus]]$quanti)){
+        quanti.names<-rownames(object$pca.param[[clus]]$quanti$coord)[which(rownames(object$pca.param[[clus]]$quanti$coord)%in%quanti.names)]
       }
-      X.quanti1<-X.quanti
-      X.quali1<-X.quali
-      for (unix in 1:nr.added){
-        lvl.nr<-names(which(table(X.quali[,names(which(uni==1))[unix]])==0))
-        for(lvl in 1:length(lvl.nr)){
-          X.quanti1<-rbind(X.quanti1, X.quanti[1,])
-          X.quali1<-rbind(X.quali1, X.quali[1,])
-          X.quali1[dim(X.quali1)[1],names(which(uni==1))[unix]]<-lvl.nr[lvl]
-          if(lvl>1){
-            nr.added<-nr.added+1
+      if(!is.null(object$pca.param[[clus]]$quali)){
+        quali.names<-rownames(object$pca.param[[clus]]$quali$contrib)[which(rownames(object$pca.param[[clus]]$quali$contrib)%in%quali.names)]
+      }
+      nr.vars<-length(quanti.names)+length(quali.names)
+
+      #test for all identical factor levels
+      uni<-apply(X.quali[,quali.names, drop=F],2, FUN=function(x){length(stats::na.omit(unique(x)))})
+      if (any(uni==1)){
+        #add hypothetical sample with missing levels
+        nr.added<-length(which(uni==1))
+        lvl.miss<-rep(0,length(which(uni==1)))
+        for (unix in 1:nr.added){
+          lvl.miss[unix]<-length(names(which(table(X.quali[,names(which(uni==1))[unix]])==0)))
+        }
+        X.quanti1<-X.quanti
+        X.quali1<-X.quali
+        for (unix in 1:nr.added){
+          lvl.nr<-names(which(table(X.quali[,names(which(uni==1))[unix]])==0))
+          for(lvl in 1:length(lvl.nr)){
+            X.quanti1<-rbind(X.quanti1, X.quanti[1,])
+            X.quali1<-rbind(X.quali1, X.quali[1,])
+            X.quali1[dim(X.quali1)[1],names(which(uni==1))[unix]]<-lvl.nr[lvl]
+            if(lvl>1){
+              nr.added<-nr.added+1
+            }
           }
         }
+        #predict and save without hypothetical sample
+        if (length(quanti.names)==1&length(quali.names)>1){
+          quan2qual<-arules::discretize(X.quanti1[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
+          quan2qual<-as.data.frame(quan2qual)
+          colnames(quan2qual)<-quanti.names
+          df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali1[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+          message(quanti.names, "removed")
+        } else if (length(quanti.names)==0&length(quali.names)==1){
+          df[,clus]<-factor(X.quali1[,quali.names])[1:(length(X.quali1[,quali.names])-1)]
+          colnames(df)[clus]<-quali.names
+        } else if (length(quanti.names)>0&length(quali.names)==1){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali1[,quali.names, drop=F])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+        } else if(length(quanti.names)==1&length(quali.names)==0){
+          df[,clus]<-X.quanti[,quanti.names, drop=F][1:(length(X.quali1[,quali.names])-1)]
+        } else if (length(quanti.names)>0&length(quali.names)>0){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+        } else if(length(quanti.names)>0){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+        } else {
+          df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
+        }
+      }else{
+        if (length(quanti.names)==1&length(quali.names)>1){
+          quan2qual<-arules::discretize(X.quanti[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
+          quan2qual<-as.data.frame(quan2qual)
+          colnames(quan2qual)<-quanti.names
+          df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[,1]
+        } else if (length(quanti.names)==0&length(quali.names)==1){
+          df[,clus]<-factor(X.quali[,quali.names])
+          colnames(df)[clus]<-quali.names
+        } else if (length(quanti.names)==1&length(quali.names)==0){
+          df[,clus]<-X.quanti[,quanti.names]
+          colnames(df)[clus]<-quanti.names
+        } else if (length(quanti.names)>0&length(quali.names)==1){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names, drop=F])[,1]
+        } else if(length(quanti.names)==1&length(quali.names)==0){
+          df[,clus]<-X.quanti[,quanti.names, drop=F]
+        } else if (length(quanti.names)>0&length(quali.names)>0){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names])[,1]
+        } else if(length(quanti.names)>0){
+          df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names])[,1]
+        } else {
+          df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali[,quali.names])[,1]
+        }
       }
-      #predict and save without hypothetical sample
-      if (length(quanti.names)==1&length(quali.names)>1){
-        quan2qual<-arules::discretize(X.quanti1[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
-        quan2qual<-as.data.frame(quan2qual)
-        colnames(quan2qual)<-quanti.names
-        df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali1[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
-        message(quanti.names, "removed")
-      } else if (length(quanti.names)==0&length(quali.names)==1){
-        df[,clus]<-factor(X.quali1[,quali.names])[1:(length(X.quali1[,quali.names])-1)]
-        colnames(df)[clus]<-quali.names
-      } else if (length(quanti.names)>0&length(quali.names)==1){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali1[,quali.names, drop=F])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
-      } else if(length(quanti.names)==1&length(quali.names)==0){
-        df[,clus]<-X.quanti[,quanti.names, drop=F][1:(length(X.quali1[,quali.names])-1)]
-      } else if (length(quanti.names)>0&length(quali.names)>0){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
-      } else if(length(quanti.names)>0){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti1[,quanti.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
-      } else {
-        df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali1[,quali.names])[-c((nrow(X.quali1)-nr.added+1):nrow(X.quali1)),1]
-      }
-    }else{
-      if (length(quanti.names)==1&length(quali.names)>1){
-        quan2qual<-arules::discretize(X.quanti[,quanti.names], method="fixed", breaks=attr(object$pca.param[[clus]], "breaks"))
-        quan2qual<-as.data.frame(quan2qual)
-        colnames(quan2qual)<-quanti.names
-        df[,clus]<-predict(object$pca.param[[clus]], X.quali=cbind(X.quali[,quali.names, drop=F], quan2qual), rename.level = T, graph=FALSE, ndim=2)[,1]
-      } else if (length(quanti.names)==0&length(quali.names)==1){
-        df[,clus]<-factor(X.quali[,quali.names])
-        colnames(df)[clus]<-quali.names
-      } else if (length(quanti.names)==1&length(quali.names)==0){
-        df[,clus]<-X.quanti[,quanti.names]
-        colnames(df)[clus]<-quanti.names
-      } else if (length(quanti.names)>0&length(quali.names)==1){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names, drop=F])[,1]
-      } else if(length(quanti.names)==1&length(quali.names)==0){
-        df[,clus]<-X.quanti[,quanti.names, drop=F]
-      } else if (length(quanti.names)>0&length(quali.names)>0){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names], X.quali=X.quali[,quali.names])[,1]
-      } else if(length(quanti.names)>0){
-        df[,clus]<-predict(object$pca.param[[clus]], X.quanti=X.quanti[,quanti.names])[,1]
-      } else {
-        df[,clus]<-predict(object$pca.param[[clus]], X.quali=X.quali[,quali.names])[,1]
-      }
+    } else if (length(quanti.names)==1&length(quali.names)==0){
+      df[,clus]<-X.quanti[,quanti.names, drop=F]
+    } else if (length(quanti.names)==0&length(quali.names)==1){
+      df[,clus]<-X.quali[,quali.names, drop=F]
     }
   }
   #Discretize with given intervals
+  if(debug){message("Discretization:")}
   for (clus in 1:max(object$grouping)){
+    if(debug){message(clus, " of ", max(object$grouping))}
     if(all(!is.null(object$disc.param[[clus]]))){
       d<-arules::discretize(df[,clus], method="fixed", breaks=object$disc.param[[clus]])
       if(rename.level){
@@ -899,6 +1052,12 @@ predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data
     }
   }
 
+  if(new.fit){
+    if(debug){message("New fit.")}
+    object$fit<-bn.fit(object$bn, df, method="bayes")
+  }
+
+  if(debug){message("Prediction.")}
   data<-cbind(X.quanti, X.quali)
   obs<-data[[object$target]]
   if(!is.factor(obs)){
@@ -918,7 +1077,7 @@ predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data
     if(return.data){
       return(list(pred=temp, data=df))
     } else {
-    return(temp)
+      return(temp)
     }
     #stop('implemented only for a categorical target variable with 2-4 levels. Haha')
   } else {
@@ -938,7 +1097,7 @@ predict.groupbn<-function(object, X.quanti, X.quali, rename.level=F, return.data
         }
       }
       return(p)
-   } else {
+    } else {
       #discrete target
       levels(obs)<-c(0,1)
       data<-cbind(X.quanti, X.quali)
@@ -1032,14 +1191,14 @@ groupbn.vis.html.plot<-function(res, df=NULL, save.file=TRUE, save.name=NULL, hi
                       scaling=list(min=5, max=10))
   #build network
   if(hierarchical){
-    graph<-visNetwork::visNetwork(nodes, edges, width = "100%", height="1000px", main = main,
+    graph<-visNetwork::visNetwork(nodes, edges, width = "100%", height="200%", main = main,
                       footer=paste("Group Bayesian Network.\n The thickness of an edge represents its confidence.", sep="")) %>%
       visNetwork::visHierarchicalLayout(blockShifting=TRUE, edgeMinimization=FALSE)%>%
       visNetwork::visOptions(highlightNearest = list(enabled = T, hover = T),nodesIdSelection = T)%>%
       visNetwork::visInteraction(navigationButtons = TRUE)
 
   } else {
-    graph<-visNetwork::visNetwork(nodes, edges, width = "100%", height="700px", main = main,
+    graph<-visNetwork::visNetwork(nodes, edges, main = main,
                       footer=paste("Group Bayesian Network.\n The thickness of an edge represents its confidence. Clusters are named by its most central variable. The number in brackets denotes the number of variables in the cluster.", sep="")) %>%
       #visNetwork::visIgraphLayout(type = "square")%>%
       visPhysics(solver = "forceAtlas2Based",
@@ -1077,6 +1236,9 @@ print.groupbn<-function(x,...){
     nbrsz<- mean(sapply(x$bn$nodes, function(y){length(y[[2]])}))
     cat("group Bayesian network (class 'groupbn') \n\n")
     cat("name of target variable: ", x$target, "\n",sep = "")
+    if(length(mb(x$bn, x$target))==0){
+      cat("Warning: Target variable is disconnected!\n")
+    }
     if(!is.null(separate)){
       cat("separated: ", paste(separate, collapse=" & "), "\n",sep = "")
     }

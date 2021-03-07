@@ -8,11 +8,12 @@
 %%  ~~ A concise (1-5 lines) description of what the function does. ~~
 }
 \usage{
-groupbn.output.table(res)
+groupbn.output.table(res, with.scores=TRUE)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
   \item{res}{gn object}
+  \item{with.scores}{if TRUE, similarity scores of every cluster member to the cluster center are added to the table}
 %%     ~~Describe \code{x} here~~
 }
 \value{a table with one column per group,

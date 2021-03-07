@@ -9,7 +9,9 @@
 %%  ~~ A concise (1-5 lines) description of what the function does. ~~
 }
 \usage{
-groupbn(hierarchy, k, target, separate, separate.as.roots=FALSE, X.quanti, X.quali,
+groupbn(hierarchy, k, target, separate=NULL, separate.as.roots=FALSE,
+X.quanti=NULL, X.quali=NULL, struct.alg="hc", boot=TRUE,
+discretize=TRUE, arc.thresh=NULL,
 debug=FALSE, R=100, seed=NULL)
 }
 %- maybe also 'usage' for other objects documented here.
@@ -25,6 +27,10 @@ debug=FALSE, R=100, seed=NULL)
   \item{X.quali}{a categorical matrix of data,
   or an object that can be coerced to such a matrix
   (such as a character vector, a factor or a data frame with all factor columns).}
+  \item{struct.alg}{structure learning algorithm according to bnlearn}
+  \item{arc.thresh}{threshold for bootstrap arcs}
+  \item{discretize}{a boolean, if a network variables should be discretized before network learning}
+  \item{boot}{boolean, if TRUE, a bootstrap based network averaging approach is used}
   \item{debug}{a boolean,
   if TRUE, debugging messages are printed}
   \item{R}{number of bootstrap replicates for model averaging, default is 100}
@@ -49,6 +55,7 @@ Ann-Kristin Becker
 }
 
 %% ~Make other sections like Warning with \section{Warning }{....} ~
+\references{Becker A-K, Dörr M, Felix SB, Frost F, Grabe HJ, Lerch MM, et al. (2021) From heterogeneous healthcare data to disease-specific biomarker networks: A hierarchical Bayesian network approach. PLoS Comput Biol 17(2): e1008735. https://doi.org/10.1371/journal.pcbi.1008735}
 
 \seealso{
 \code{\link{groupbn_refinement}}

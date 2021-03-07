@@ -1,3 +1,17 @@
+GroupBN 1.2.0 (2021-03-07)
+==========================
+
+New features
+------------
+
+-   Flexible choice of BN structure learning algorithms and boostrapping was provided
+-   Additional function 'groupbn_refine_manually' for manual refinement of clusters was added
+
+Other changes
+-------------
+- Reference was provided
+
+
 GroupBN 0.2.0 (2020-05-18)
 ==========================
 

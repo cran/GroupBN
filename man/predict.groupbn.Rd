@@ -8,7 +8,8 @@
 Predict the target variable from a group Bayesian network
 }
 \usage{
-\method{predict}{groupbn}(object, X.quanti, X.quali, rename.level=F, return.data=F, ...)
+\method{predict}{groupbn}(object, X.quanti, X.quali, rename.level=FALSE, return.data=FALSE,
+new.fit=FALSE, debug=FALSE, ...)
 }
 %- maybe also 'usage' for other objects documented here.
 \arguments{
@@ -19,6 +20,9 @@ Predict the target variable from a group Bayesian network
 \item{X.quali}{qualitative variables}
 \item{rename.level}{a boolean; if TRUE, all levels of categorical variables are renamed by integers. Default is FALSE.}
 \item{return.data}{a boolean; if TRUE, a list with predictions and group.data is returned instead of only predicitions. Default is FALSE.}
+\item{new.fit}{a boolean; if TRUE, the parameters are newly fit using the test data.}
+\item{debug}{a boolean,
+  if TRUE, debugging messages are printed}
 \item{...}{further arguments}
 }
 \value{
